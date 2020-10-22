@@ -73,13 +73,7 @@ ifndef DYNAMIC_ARCH
 ifndef NO_AVX2
 ifeq ($(C_COMPILER), GCC)
 # AVX2 support was added in 4.7.0
-GCCVERSIONGTEQ4 := $(shell expr `$(CC) -dumpversion | cut -f1 -d.` \>= 4)
-GCCVERSIONGTEQ5 := $(shell expr `$(CC) -dumpversion | cut -f1 -d.` \>= 5)
-GCCMINORVERSIONGTEQ7 := $(shell expr `$(CC) -dumpversion | cut -f2 -d.` \>= 7)
-GCCVERSIONCHECK := $(GCCVERSIONGTEQ5)$(GCCVERSIONGTEQ4)$(GCCMINORVERSIONGTEQ7)
-ifeq ($(GCCVERSIONCHECK), $(filter $(GCCVERSIONCHECK), 011 110 111))
-CCOMMON_OPT += -mavx2
-endif
+CCOMMON_OPT += $(shell perl -e 'exit(!(version->parse(`$(CC) -dumpversion`) >= version->parse("4.7")))' && echo -n "-mavx2")
 else 
 ifeq ($(C_COMPILER), CLANG)
 CCOMMON_OPT += -mavx2
@@ -87,13 +81,7 @@ endif
 endif
 ifeq ($(F_COMPILER), GFORTRAN)
 # AVX2 support was added in 4.7.0
-GCCVERSIONGTEQ4 := $(shell expr `$(FC) -dumpversion | cut -f1 -d.` \>= 4)
-GCCVERSIONGTEQ5 := $(shell expr `$(FC) -dumpversion | cut -f1 -d.` \>= 5)
-GCCMINORVERSIONGTEQ7 := $(shell expr `$(FC) -dumpversion | cut -f2 -d.` \>= 7)
-GCCVERSIONCHECK := $(GCCVERSIONGTEQ5)$(GCCVERSIONGTEQ4)$(GCCVERSIONMINORGTEQ7)
-ifeq ($(GCCVERSIONCHECK), $(filter $(GCCVERSIONCHECK), 011 110 111))
-FCOMMON_OPT += -mavx2
-endif
+FCOMMON_OPT += $(shell perl -e 'exit(!(version->parse(`$(FC) -dumpversion`) >= version->parse("4.7")))' && echo -n "-mavx2")
 else
 ifeq ($(F_COMPILER), FLANG)
 FCOMMON_OPT += -mavx2
