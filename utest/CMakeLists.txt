@@ -116,6 +116,13 @@ set(OpenBLAS_utest_src
   )
 endif()
 
+if (USE_OPENMP)
+set(OpenBLAS_utest_src
+  ${OpenBLAS_utest_src}
+  test_set_num_threads_omp.c
+  )
+endif()
+
 if (NOT NO_LAPACK)
 set(OpenBLAS_utest_src
   ${OpenBLAS_utest_src}

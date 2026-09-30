@@ -77,23 +77,27 @@ extern int openblas_omp_adaptive_env(void);
 static _Atomic(void *) blas_thread_buffer[MAX_PARALLEL_NUMBER][MAX_CPU_NUMBER];
 static _Atomic _Bool blas_buffer_inuse[MAX_PARALLEL_NUMBER];
 
-static void adjust_thread_buffers(void) {
+/* Make sure every thread slot below num_threads has a buffer.
+   Buffers are only ever added here, never released: openblas_set_num_threads
+   may be called concurrently (openblas_set_num_threads_local is meant to be
+   called from inside OpenMP parallel regions), and a buffer above the new
+   thread count may still be in use by an exec_blas running in another thread.
+   Releasing them here double-freed them in the first case and freed them from
+   under the running kernel in the second.  They are released in
+   blas_thread_shutdown. */
+static void adjust_thread_buffers(int num_threads) {
 
   int i=0, j=0;
 
-  //adjust buffer for each thread
+#pragma omp critical(openblas_thread_buffers)
+  {
   for(i=0; i < MAX_PARALLEL_NUMBER; i++) {
-    for(j=0; j < blas_cpu_number; j++){
+    for(j=0; j < num_threads; j++){
       if(blas_thread_buffer[i][j] == NULL){
         blas_thread_buffer[i][j] = blas_memory_alloc(2);
       }
     }
-    for(; j < MAX_CPU_NUMBER; j++){
-      if(blas_thread_buffer[i][j] != NULL){
-        blas_memory_free(blas_thread_buffer[i][j]);
-        blas_thread_buffer[i][j] = NULL;
-      }
-    }
+  }
   }
 }
 
@@ -109,7 +113,7 @@ void goto_set_num_threads(int num_threads) {
 
   blas_cpu_number  = num_threads;
 
-  adjust_thread_buffers();
+  adjust_thread_buffers(num_threads);
 #if defined(ARCH_MIPS64) || defined(ARCH_LOONGARCH64)
 #ifndef DYNAMIC_ARCH
   //set parameters for different number of threads.
@@ -152,7 +156,7 @@ extern int openblas_omp_num_threads_env(void);
 
   blas_get_cpu_number();
 
-  adjust_thread_buffers();
+  adjust_thread_buffers(blas_cpu_number);
 
   blas_server_avail = 1;
 

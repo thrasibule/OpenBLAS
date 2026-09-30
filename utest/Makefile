@@ -54,6 +54,10 @@ endif
 OBJS += test_post_fork.o
 endif
 
+ifeq ($(USE_OPENMP), 1)
+OBJS += test_set_num_threads_omp.o
+endif
+
 ifeq ($(C_COMPILER), PGI)
 OBJS = utest_main2.o
 endif
