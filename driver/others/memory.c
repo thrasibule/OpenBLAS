@@ -1378,7 +1378,16 @@ void blas_memory_free_nolock(void * map_address) {
 
 #ifdef SMP
 void blas_thread_memory_cleanup(void) {
-    blas_memory_cleanup((void*)get_memory_table());
+    struct alloc_t ** table;
+    if (!local_storage_key_valid) return;
+#  if defined(OS_WINDOWS)
+    table = (struct alloc_t **)TlsGetValue(local_storage_key);
+    TlsSetValue(local_storage_key, NULL);
+#  else
+    table = (struct alloc_t **)pthread_getspecific(local_storage_key);
+    pthread_setspecific(local_storage_key, NULL);
+#  endif /* defined(OS_WINDOWS) */
+    blas_memory_cleanup((void*)table);
 }
 #endif
 
@@ -1390,7 +1399,7 @@ void blas_shutdown(void){
 
 #ifdef SMP
   /* Only cleanupIf we were built for threading and TLS was initialized */
-  if (local_storage_key)
+  if (local_storage_key_valid)
 #endif
     blas_thread_memory_cleanup();
 
@@ -1580,11 +1589,14 @@ void DESTRUCTOR gotoblas_quit(void) {
   blas_shutdown();
 
 #if defined(SMP)
+  if (local_storage_key_valid) {
+  local_storage_key_valid = 0;
 #if defined(OS_WINDOWS)
   TlsFree(local_storage_key);
 #else
   pthread_key_delete(local_storage_key);
 #endif
+  }
 #endif
 
 #ifdef PROFILE
