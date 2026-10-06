@@ -1197,15 +1197,7 @@ void *blas_memory_alloc(int procpos){
   struct alloc_t * alloc_info;
   struct alloc_t ** alloc_table;
 
-#if defined(SMP) && !defined(USE_OPENMP)
-int mi;
-LOCK_COMMAND(&alloc_lock);
-mi=memory_initialized;
-UNLOCK_COMMAND(&alloc_lock);
-  if (!LIKELY_ONE(mi)) {
-#else
   if (!LIKELY_ONE(memory_initialized)) {
-#endif
 #if defined(SMP) && !defined(USE_OPENMP)
     /* Only allow a single thread to initialize memory system */
     LOCK_COMMAND(&alloc_lock);
