@@ -440,7 +440,9 @@ void openblas_fork_handler(void)
   // implementation of OpenMP.
 #if !((defined(OS_WINDOWS) && !defined(OS_CYGWIN_NT)) || defined(OS_ANDROID)) && defined(SMP_SERVER)
   int err;
-  err = pthread_atfork ((void (*)(void)) BLASFUNC(blas_thread_shutdown), NULL, blas_memory_init);
+  /* No child handler: the thread-local key and the forking thread's buffer
+     table are inherited by the child and remain valid there. */
+  err = pthread_atfork ((void (*)(void)) BLASFUNC(blas_thread_shutdown), NULL, NULL);
   if(err != 0)
     openblas_warning(0, "OpenBLAS Warning ... cannot install fork handler. You may meet hang after fork.\n");
 #endif
@@ -563,12 +565,16 @@ static const int allocation_block_size = BUFFER_SIZE + sizeof(struct alloc_t);
 #if defined(SMP)
 #  if defined(OS_WINDOWS)
 static DWORD local_storage_key = 0;
-DWORD lsk;
 
 #  else
 static pthread_key_t local_storage_key = 0;
-pthread_key_t lsk;
 #  endif /* defined(OS_WINDOWS) */
+/* Set once local_storage_key holds a valid key (0 is a valid key itself). */
+#ifdef HAVE_C11
+static _Atomic int local_storage_key_valid = 0;
+#else
+static volatile int local_storage_key_valid = 0;
+#endif
 #endif /* defined(SMP) */
 
 #if defined(OS_LINUX) && !defined(NO_WARMUP)
@@ -596,11 +602,9 @@ static BLASULONG  key_lock = 0UL;
 /* Returns a pointer to the start of the per-thread memory allocation data */
 static __inline struct alloc_t ** get_memory_table(void) {
 #if defined(SMP)
-LOCK_COMMAND(&key_lock);
-lsk=local_storage_key;
-UNLOCK_COMMAND(&key_lock);
-  if (!lsk) {
+  if (!local_storage_key_valid) {
     blas_memory_init();
+    if (!local_storage_key_valid) return NULL;
   }
 #  if defined(OS_WINDOWS)
   struct alloc_t ** local_memory_table = (struct alloc_t **)TlsGetValue(local_storage_key);
@@ -610,15 +614,9 @@ UNLOCK_COMMAND(&key_lock);
 #else
   static struct alloc_t ** local_memory_table = NULL;
 #endif /* defined(SMP) */
-#if defined (SMP)
-LOCK_COMMAND(&key_lock);
-lsk=local_storage_key;
-UNLOCK_COMMAND(&key_lock);
-  if (lsk && !local_memory_table) {
-#else
  if (!local_memory_table) {
-#endif /* defined(SMP) */
     local_memory_table = (struct alloc_t **)malloc(sizeof(struct alloc_t *) * NUM_BUFFERS);
+    if (!local_memory_table) return NULL;
     memset(local_memory_table, 0, sizeof(struct alloc_t *) * NUM_BUFFERS);
 #if defined(SMP)
 #  if defined(OS_WINDOWS)
@@ -1152,11 +1150,16 @@ static void blas_memory_cleanup(void* ptr){
 
 static void blas_memory_init(void){
 #if defined(SMP)
+  LOCK_COMMAND(&key_lock);
+  if (!local_storage_key_valid) {
 #  if defined(OS_WINDOWS)
   local_storage_key = TlsAlloc();
+  local_storage_key_valid = (local_storage_key != TLS_OUT_OF_INDEXES);
 #  else
-  pthread_key_create(&local_storage_key, blas_memory_cleanup);
+  local_storage_key_valid = (pthread_key_create(&local_storage_key, blas_memory_cleanup) == 0);
 #  endif /* defined(OS_WINDOWS) */
+  }
+  UNLOCK_COMMAND(&key_lock);
 #endif /* defined(SMP) */
 }
 
@@ -1242,6 +1245,7 @@ UNLOCK_COMMAND(&alloc_lock);
 
   position = 0;
   alloc_table = get_memory_table();
+  if (!alloc_table) return NULL;
   do {
       if (!alloc_table[position] || !alloc_table[position]->used) goto allocation;
     position ++;
